@@ -672,3 +672,61 @@ func TestBuildFromHCL_NestedMap(t *testing.T) {
 		t.Error("expected name to be required")
 	}
 }
+
+// TestBuildFromHCL_CommaSeparatedFields tests that object fields written on one
+// line and separated by commas are all exported, not just the first.
+func TestBuildFromHCL_CommaSeparatedFields(t *testing.T) {
+	t.Parallel()
+
+	variable := &hclparse.Variable{
+		Name:        "settings",
+		Type:        `object({ a = string, b = optional(number), c = optional(list(string)) })`,
+		Description: "<!-- MARINATED: settings -->",
+		MarinatedID: "settings",
+	}
+
+	s, err := schema.NewBuilder().BuildFromVariable(variable)
+	if err != nil {
+		t.Fatalf("BuildFromVariable() error = %v", err)
+	}
+
+	for _, name := range []string{"a", "b", "c"} {
+		if _, ok := s.SchemaNodes[name]; !ok {
+			t.Errorf("expected field %q to be exported", name)
+		}
+	}
+	if got := s.SchemaNodes["a"].Marinate.Type; got != "string" {
+		t.Errorf("a type = %q, want string", got)
+	}
+	if got := s.SchemaNodes["c"].Marinate.ElementType; got != "string" {
+		t.Errorf("c element_type = %q, want string", got)
+	}
+}
+
+// TestBuildFromHCL_CommaWithInlineComment tests a comma-separated body that also
+// carries a comment: the two fixes must not undo each other.
+func TestBuildFromHCL_CommaWithInlineComment(t *testing.T) {
+	t.Parallel()
+
+	variable := &hclparse.Variable{
+		Name:        "mixed",
+		Type:        "object({ a = string, # first\n  b = optional(string, \"x,y\") })",
+		Description: "<!-- MARINATED: mixed -->",
+		MarinatedID: "mixed",
+	}
+
+	s, err := schema.NewBuilder().BuildFromVariable(variable)
+	if err != nil {
+		t.Fatalf("BuildFromVariable() error = %v", err)
+	}
+	if _, ok := s.SchemaNodes["a"]; !ok {
+		t.Error("expected field \"a\"")
+	}
+	b, ok := s.SchemaNodes["b"]
+	if !ok {
+		t.Fatal("expected field \"b\"")
+	}
+	if b.Marinate.Default != "x,y" {
+		t.Errorf("b default = %v, want x,y - a comma inside a string must not split the field", b.Marinate.Default)
+	}
+}
