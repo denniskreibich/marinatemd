@@ -286,10 +286,7 @@ func (b *Builder) parseFieldType(typeExpr string, node *Node, _fieldName string)
 
 	// Handle set type
 	if strings.HasPrefix(typeExpr, "set(") {
-		node.Marinate.Type = typeSet
-		innerType := extractFunctionArg(typeExpr, typeSet)
-		node.Marinate.ElementType = b.simplifyType(innerType)
-		return nil
+		return b.parseSetFieldType(typeExpr, node)
 	}
 
 	// Handle map type
@@ -322,6 +319,18 @@ func (b *Builder) parseListFieldType(typeExpr string, node *Node) error {
 	innerType := extractFunctionArg(typeExpr, typeList)
 	node.Marinate.ElementType = b.simplifyType(innerType)
 	// If list contains objects, parse them as children
+	if strings.HasPrefix(innerType, "object(") {
+		return b.parseNestedObjectChildren(innerType, node)
+	}
+	return nil
+}
+
+// parseSetFieldType parses a set type and its element type.
+func (b *Builder) parseSetFieldType(typeExpr string, node *Node) error {
+	node.Marinate.Type = typeSet
+	innerType := extractFunctionArg(typeExpr, typeSet)
+	node.Marinate.ElementType = b.simplifyType(innerType)
+	// If set contains objects, parse them as children
 	if strings.HasPrefix(innerType, "object(") {
 		return b.parseNestedObjectChildren(innerType, node)
 	}
@@ -583,14 +592,16 @@ func (b *Builder) parseSetType(typeExpr string, nodes map[string]*Node, contextN
 	node := &Node{
 		Marinate: &MarinateInfo{
 			Description: fmt.Sprintf("# TODO: Add description for %s", contextName),
-			Type:        typeSet,
 			Required:    true,
 		},
 		Attributes: make(map[string]*Node),
 	}
 
-	innerType := extractFunctionArg(typeExpr, typeSet)
-	node.Marinate.ElementType = b.simplifyType(innerType)
+	// Delegate to the field-level parser so element attributes of
+	// set(object({...})) are expanded as children, mirroring list/map(object).
+	if err := b.parseSetFieldType(typeExpr, node); err != nil {
+		return err
+	}
 
 	nodes["_root"] = node
 	return nil

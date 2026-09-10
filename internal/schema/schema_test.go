@@ -669,3 +669,69 @@ func TestBuildFromHCL_NestedMap(t *testing.T) {
 		t.Error("expected name to be required")
 	}
 }
+
+// TestBuildFromHCL_SetOfObjects tests that a top-level set(object({...}))
+// exports its element attributes, the same way list and map already do.
+func TestBuildFromHCL_SetOfObjects(t *testing.T) {
+	t.Parallel()
+
+	variable := &hclparse.Variable{
+		Name:        "endpoints",
+		Type:        "set(object({\n  host = string\n  port = optional(number)\n}))",
+		Description: "<!-- MARINATED: endpoints -->",
+		MarinatedID: "endpoints",
+	}
+
+	s, err := schema.NewBuilder().BuildFromVariable(variable)
+	if err != nil {
+		t.Fatalf("BuildFromVariable() error = %v", err)
+	}
+	root, ok := s.SchemaNodes["_root"]
+	if !ok {
+		t.Fatal("expected '_root' node")
+	}
+	if root.Marinate.Type != "set" {
+		t.Errorf("_root type = %v, want set", root.Marinate.Type)
+	}
+	if root.Marinate.ElementType != "object" {
+		t.Errorf("_root element_type = %v, want object", root.Marinate.ElementType)
+	}
+	host, hasHost := root.Attributes["host"]
+	if !hasHost {
+		t.Fatal("expected 'host' in _root attributes")
+	}
+	if host.Marinate.Type != "string" || !host.Marinate.Required {
+		t.Errorf("host = %+v, want required string", host.Marinate)
+	}
+	if _, hasPort := root.Attributes["port"]; !hasPort {
+		t.Error("expected 'port' in _root attributes")
+	}
+}
+
+// TestBuildFromHCL_NestedSetOfObjects tests the same for a set nested inside an
+// object variable, which goes through the field-level parser.
+func TestBuildFromHCL_NestedSetOfObjects(t *testing.T) {
+	t.Parallel()
+
+	variable := &hclparse.Variable{
+		Name:        "cfg",
+		Type:        "object({\n  targets = set(object({\n    host = string\n  }))\n})",
+		Description: "<!-- MARINATED: cfg -->",
+		MarinatedID: "cfg",
+	}
+
+	s, err := schema.NewBuilder().BuildFromVariable(variable)
+	if err != nil {
+		t.Fatalf("BuildFromVariable() error = %v", err)
+	}
+	targets, hasTargets := s.SchemaNodes["targets"]
+	if !hasTargets {
+		t.Fatal("expected 'targets' node")
+	}
+	if targets.Marinate.Type != "set" {
+		t.Errorf("targets type = %v, want set", targets.Marinate.Type)
+	}
+	if _, ok := targets.Attributes["host"]; !ok {
+		t.Error("expected 'host' under targets")
+	}
+}
