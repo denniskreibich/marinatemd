@@ -477,6 +477,9 @@ func (fp *fieldParser) parse() (map[string]string, error) {
 			fp.handleAssignment(i)
 		case fp.depth == 0 && fp.inField && (ch == '\n' || ch == '\r'):
 			fp.handleNewline(i)
+		case fp.depth == 0 && fp.inField && ch == ',':
+			// object({ a = string, b = number }) separates fields with commas
+			fp.saveCurrentField()
 		case fp.inField:
 			fp.currentValue.WriteByte(ch)
 		}
